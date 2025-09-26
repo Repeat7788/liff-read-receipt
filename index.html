@@ -1,0 +1,52 @@
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8">
+<title>回條</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<body style="font-family:system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, sans-serif">
+<div id="msg" style="padding:24px">處理中...</div>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+(async () => {
+  // === TODO(1): 換成你剛建立的 LIFF ID ===
+  const LIFF_ID = "YOUR_LIFF_ID_HERE";
+  // === TODO(2): 換成你的 Make Custom Webhook URL ===
+  const MAKE_WEBHOOK_URL = "https://hook.make.com/YOUR_WEBHOOK_ID";
+
+  // 可選：email 中可帶一個追蹤參數 t=信件ID
+  const qs = new URL(location.href).searchParams;
+  const token = qs.get("t") || ""; // 例如 emailId，用於你後端辨識
+
+  // 初始化 LIFF
+  await liff.init({ liffId: LIFF_ID });
+
+  // 若不是在 LINE 內開啟，或尚未登入，觸發 LINE Login（一次）
+  if (!liff.isLoggedIn()) {
+    liff.login({ scope: 'openid profile email' }); // 要 email 記得要有 email scope，且 Login channel 需已申請 Email permission
+    return; // Login 會重新導回本頁
+  }
+
+  // 取得使用者資訊
+  const profile = await liff.getProfile();          // userId, displayName...
+  const idToken = liff.getIDToken();                // OIDC ID Token
+  const decoded = liff.getDecodedIDToken ? liff.getDecodedIDToken() : null; // 若有 email scope，通常會含 email
+
+  // 傳回你的後端/Make
+  const payload = {
+    t: token,
+    time: new Date().toISOString(),
+    userId: profile.userId,
+    displayName: profile.displayName,
+    idToken,                                        // 後端用 verify 端點驗證 & 取 email
+    emailFromDecoded: decoded && decoded.email ? decoded.email : null
+  };
+
+  await fetch(MAKE_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  document.getElementById("msg").innerText = "✅ 已回條，謝謝！";
+})();
+</script>
+</body></html>
