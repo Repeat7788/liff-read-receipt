@@ -3,40 +3,46 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <body style="font-family:system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, sans-serif">
 <div id="msg" style="padding:24px">處理中...</div>
-
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
 (async () => {
-  // === TODO(1): 換成你剛建立的 LIFF ID ===
   const LIFF_ID = "2007725227-Zdr3nr5j";
-  // === TODO(2): 換成你的 Make Custom Webhook URL ===
   const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/nb5p39bk9q6pmmfabfyuoy5s8shueldf";
 
-  // 可選：email 中可帶一個追蹤參數 t=信件ID
   const qs = new URL(location.href).searchParams;
-  const token = qs.get("t") || ""; // 例如 emailId，用於你後端辨識
+  const token = qs.get("t") || "";
 
-  // 初始化 LIFF
   await liff.init({ liffId: LIFF_ID });
 
-  // 若不是在 LINE 內開啟，或尚未登入，觸發 LINE Login（一次）
-  if (!liff.isLoggedIn()) {
-    liff.login({ scope: 'openid profile email' }); // 要 email 記得要有 email scope，且 Login channel 需已申請 Email permission
-    return; // Login 會重新導回本頁
+  // 檢查並確保 token 新鮮（過期就強制重登，但只做一次避免循環）
+  const needRelogin = () => {
+    const dec = liff.getDecodedIDToken && liff.getDecodedIDToken();
+    if (!dec) return true;                           // 沒 token
+    const now = Math.floor(Date.now() / 1000);
+    return dec.exp && dec.exp <= now + 30;           // 30秒內將過期也當過期
+  };
+
+  if (!liff.isLoggedIn() || needRelogin()) {
+    if (!sessionStorage.getItem("relogin_once")) {
+      sessionStorage.setItem("relogin_once", "1");
+      liff.logout(); // 確保一定換到新 token
+      liff.login({ scope: "openid profile email", prompt: "login" });
+      return; // 重新導回本頁
+    }
   }
 
-  // 取得使用者資訊
-  const profile = await liff.getProfile();          // userId, displayName...
-  const idToken = liff.getIDToken();                // OIDC ID Token
-  const decoded = liff.getDecodedIDToken ? liff.getDecodedIDToken() : null; // 若有 email scope，通常會含 email
+  await liff.ready;
 
-  // 傳回你的後端/Make
+  const profile = await liff.getProfile();
+  const idToken = liff.getIDToken();
+  const decoded = liff.getDecodedIDToken && liff.getDecodedIDToken();
+
   const payload = {
     t: token,
     time: new Date().toISOString(),
     userId: profile.userId,
     displayName: profile.displayName,
-    idToken,                                        // 後端用 verify 端點驗證 & 取 email
+    idToken,
     emailFromDecoded: decoded && decoded.email ? decoded.email : null
   };
 
@@ -46,7 +52,7 @@
     body: JSON.stringify(payload)
   });
 
-  document.getElementById("msg").innerText = "✅ 已傳送讀取回條，謝謝！";
+  document.getElementById("msg").innerText = "✅ 已確認讀取回條，謝謝！";
 })();
 </script>
 </body></html>
